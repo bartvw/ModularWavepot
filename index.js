@@ -30,22 +30,39 @@ function noteToFreq(note) {
 function MonoSynth(waveFunction, ampEnvelopeGenerator) {
   this.waveFunction = waveFunction;
   this.ampEnvelopeGenerator = ampEnvelopeGenerator;
+  this.pitchEnvelopeGenerator = new AttackDecayEnvelope(0, 0.05);
+  this.pitchEnvelopeAmplitude = 0.5;
   
-  this.note = 'c4';
+  this.note = null;
   this.attackOffset = 0;
   this.releaseOffset = 0;
   this.noteStart = 0;
 }
 
 MonoSynth.prototype.dsp = function(t) {
+  if (!this.note) {
+    return 0;
+  }
+  
   var level = this.ampEnvelopeGenerator.getValue(t);
   
-  return level * this.waveFunction(t - this.noteStart, noteToFreq(this.note));
+  var frequency = noteToFreq(this.note);
+  if (this.pitchEnvelopeGenerator) {
+    frequency = frequency + frequency * this.pitchEnvelopeGenerator.getValue(t) * this.pitchEnvelopeAmplitude;
+  }
+  
+  return level * this.waveFunction(t - this.noteStart, frequency);
+};
+
+MonoSynth.prototype.setPitchEnvelope = function(pitchEnvelopeGenerator, amplitude) {
+  this.pitchEnvelopeGenerator = pitchEnvelopeGenerator;
+  this.pitchEnvelopeAmplitude = amplitude;
 };
 
 MonoSynth.prototype.noteOn = function(t, note) {
   this.noteStart = t;
   this.ampEnvelopeGenerator.triggerAttack(t);
+  this.pitchEnvelopeGenerator.triggerAttack(t);
   this.note = note;
 };
 
@@ -75,6 +92,7 @@ PolySynth.prototype.dsp = function(t) {
   return this.mixer.dsp(t);
 }
 
+
 /**
  * AD Envelope Generator
  */
@@ -82,23 +100,33 @@ function AttackDecayEnvelope(attackTime, decayTime) {
   this.attackTime = attackTime;
   this.decayTime = decayTime;
   this.start = 0;
+  this.triggered = false;
 }
 
 AttackDecayEnvelope.prototype.triggerAttack = function(t) {
   this.start = t;
-
+  this.triggered = true;
 }
 
 AttackDecayEnvelope.prototype.getValue = function(t) {
+  if (!this.triggered) {
+    return 0;
+  }
+
+  function clamp(value) {
+    return Math.min(1, Math.max(0, value));
+  }
+
   var secondsIn = t - this.start;
   
   if (secondsIn <= this.attackTime) {
-    return Math.min(1, (secondsIn / this.attackTime)); 
+    return clamp(secondsIn / this.attackTime); 
   } else if (secondsIn <= (this.attackTime + this.decayTime)) {
-    return Math.max(0, 1 - ((secondsIn - this.attackTime) / this.decayTime));  
+    return clamp(1 - ((secondsIn - this.attackTime) / this.decayTime));  
   } else {
     return 0;
   }
+  
 }
 
 /**
@@ -179,7 +207,7 @@ function sine(t, freq) {
 var synth = new PolySynth(
   function () { 
     return new MonoSynth(sawtooth, new AttackDecayEnvelope(0.01, 0.2)); 
-  }, 16);
+  }, 4);
   
 var mainMixer = new Mixer(0.9);
 mainMixer.addChannel(synth, 0.4);
