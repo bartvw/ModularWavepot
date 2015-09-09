@@ -30,8 +30,8 @@ function noteToFreq(note) {
 function MonoSynth(waveFunction, ampEnvelopeGenerator) {
   this.waveFunction = waveFunction;
   this.ampEnvelopeGenerator = ampEnvelopeGenerator;
-  this.pitchEnvelopeGenerator = new AttackDecayEnvelope(0, 0.05);
-  this.pitchEnvelopeAmplitude = 0.5;
+  this.pitchEnvelopeGenerator = new AttackDecayEnvelope(0, 0.02);
+  this.pitchEnvelopeAmplitude = 0.2;
   
   this.note = null;
   this.attackOffset = 0;
@@ -141,7 +141,7 @@ function StepSequencer(synth, bpm, pattern) {
 
 StepSequencer.prototype.run = function(t) {
   
-  var step = Math.floor(t * this.bpm / 15) % 16;
+  var step = Math.floor(t * this.bpm / 15) % this.pattern.length;
   
   if (step != this.step) {
     // next step
@@ -204,13 +204,18 @@ function sine(t, freq) {
  * Main
  * ---------------------------
  */
+var mainMixer = new Mixer(0.9);
+
 var synth = new PolySynth(
   function () { 
     return new MonoSynth(sawtooth, new AttackDecayEnvelope(0.01, 0.2)); 
   }, 4);
-  
-var mainMixer = new Mixer(0.9);
-mainMixer.addChannel(synth, 0.4);
+  mainMixer.addChannel(synth, 0.2);
+
+var bassDrum = new MonoSynth(sine, new AttackDecayEnvelope(0.0, 0.1));
+bassDrum.setPitchEnvelope(new AttackDecayEnvelope(0.0, 0.2), 4);
+var bassDrumSequencer = new StepSequencer(bassDrum, 120, ['a3', null, null, null]);
+mainMixer.addChannel(bassDrum, 0.8);
 
 var stepSequencer = new StepSequencer(
   synth, 120, [
@@ -219,12 +224,13 @@ var stepSequencer = new StepSequencer(
   
 var stepSequencer2 = new StepSequencer(
   synth, 120, [
-    'c3', null, null, 'c3', null, null, 'g2', 'e2', null, null, 'e2', 'c1', null, 'c3'
+    'c3', null, null, 'c3', null, null, 'g2', 'e2', null, null, 'e2', 'c1', null, 'c3', null, null
   ]);
   
 export function dsp(t) {
   stepSequencer.run(t);
   stepSequencer2.run(t);
+  bassDrumSequencer.run(t);
   
   return mainMixer.dsp(t);
 }
